@@ -6,7 +6,7 @@ from os.path import join as osjoin
 from os import getcwd
 import filemanipulator
 
-pagelink = "https://github.com/Daniel-CG-Wright/File-manipulator-python-module-Py-3.9-/blob/main/filemanipulator/filemanipulator.py"
+pagelink = "https://raw.githubusercontent.com/Daniel-CG-Wright/File-manipulator-python-module-Py-3.9-/main/filemanipulator/filemanipulator.py"
 updatepath = osjoin(getcwd(), "filemanipulator.py")
 
 #Set this to True to have the module automatically update whenever it is
