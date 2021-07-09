@@ -97,6 +97,7 @@ returns = True, bannedcharacters=bannedfilecharacters): #Writes a file, deciding
         filetype (str): The file extension (default .txt)
         information (str): The information to write to the file on creation. 
                             Can be a list of strings, or a standalone string. (default \"\")
+                            A list of strings will be written with a line per element
         overwrite (bool): Whether other files with the same name should be
                             overwritten, or the new file have a character appended
                             to its name to make it unique (see overwriteappend) (default False)
@@ -143,19 +144,32 @@ returns = True, bannedcharacters=bannedfilecharacters): #Writes a file, deciding
     if isinstance(information, list) == False: 
         informationlist = [information] 
         
-    else: informationlist = information #Sets a list for a writelines function to write information to the file
+    else: 
+        informationlist = information #Sets a list for a writelines function to write information to the file
+
+        for x in range(len(informationlist)):
+
+            informationlist[x] += "\n"
 
     if wraplength > 0 and isinstance(information, list) == False: 
 
-        informationlist = [""] #Controls wrapping
+        
+        
+        informationlist = [list(information)[i:i + wraplength] for i in range(0, len(information), wraplength)]
 
-        for index, element in enumerate(list(information)):
+        for index, element in enumerate(informationlist):
             
-            informationlist[index] = "" 
+            if isinstance(element, list):
+                informationlist[index] = ""
+                for x in element:
 
-            for x in range(wraplength):
+                    informationlist[index] += x
 
-                informationlist[index] += element #Adds a character from the information string to the correct index in the list until the wrapping limit is reached for that index
+                informationlist[index] += "\n"
+                    #Adds a character from the information string to the correct index in the list until the wrapping limit is reached for that index
+
+            
+    
 
     overwritespec = False if overwriteappend == "" else True #Tracks whether to keep the user-specified overwriteappend or generate a random one
 
@@ -184,7 +198,9 @@ returns = True, bannedcharacters=bannedfilecharacters): #Writes a file, deciding
         with open(completefilename, mode = "w+", encoding = encoding) as f:
             
             
-            if information != "": f.writelines(informationlist)  #Writes information, if information for the file was inserted
+            if information != "":f.writelines(informationlist)
+                
+  #Writes information, if information for the file was inserted
 
             if returns: return True
 
@@ -315,7 +331,7 @@ def FindDirFiles(directory = os.getcwd(), types = [], searchchars = [], totalmat
 
 
 
-def ReadFile(filename, directory = os.getcwd(), actiontriggers = [], actions = [], casesensitivetriggers = True, totalmatch = "none", bannedcharacters = bannedfilecharacters, encoding = "utf-8", skipempties=True):
+def ReadFile(filename, directory = os.getcwd(), readfrom = "", readto = "", casesensitivestartstop = False, totalreadmatch = "none", lines = -1, mustbereadingtriggers = True, actiontriggers = [], actions = [], casesensitivetriggers = True, totalmatch = "none", bannedcharacters = bannedfilecharacters, encoding = "utf-8", skipempties=True):
     """
     Reads a chosen file in a directory using readlines
 
@@ -329,6 +345,16 @@ def ReadFile(filename, directory = os.getcwd(), actiontriggers = [], actions = [
         filename (str): The name of the file to be read. Sanitised automatically for banned characters. Must include the extension.
         directory (str): The directory to access.
                     (default current directory)
+        
+        readfrom (str): Information will be read from this point on (inclusive)
+        readto (str): Information will be read up to this point (exclusive)
+        totalreadmatch (str): Whether the file text must exactly match the readfrom/to points for reading to be affected.
+            "none" does not use this, "word" for the entire word to match and "line" for the entire line to match.
+        casesensitivestartstop (bool): Whether the readfrom/to should be case sensitive.
+
+        lines (int): The number of lines to read
+
+        mustbereadingtriggers(bool): Whether triggers only activate after readfrom and before readto.
 
         actiontriggers (list): The strings that will cause the procedure in the
             correlating index for the 'actions' list to be called. Must be an exact match,
@@ -362,6 +388,8 @@ def ReadFile(filename, directory = os.getcwd(), actiontriggers = [], actions = [
         FileNotFoundError: If the file or directory was not found.
     
     """
+    startinstances = 0
+    stopinstances = 0
     #Combines the filename (sanitised) and the directory          
     totalfilename = os.path.join(directory, FileNameSanitise(filename, bannedcharacters))
     
@@ -371,19 +399,109 @@ def ReadFile(filename, directory = os.getcwd(), actiontriggers = [], actions = [
     #Trying to open the total file name, to handle a potential file not found error
     try:
         with open(totalfilename, "r", encoding=encoding) as file:
+            readtomet = False
             
             #A list in which the file contents are stored, one element for each line
-            
+            reading = False
             returnedcontents = []
             #Examining each line at a time. Readlines is avoided, as this will
             #not allow functions to be executed as soon as their triggers are read
             for line in file:
                 
-                
+                line2 = line
+                if reading and lines > 0:
+                    lines -= 1
 
-                #Replaces new line characters to avoid character corruption when checking
+                                #Replaces new line characters to avoid character corruption when checking
                 line = line.replace("\n", "")
-                
+
+                if readfrom == "":
+                    reading = True
+
+                if readfrom != "" and not reading:
+                    
+                    if not casesensitivestartstop: line2 = line.lower(); readfrom = readfrom.lower()
+
+                    if totalreadmatch == "none":
+                        try:
+                            if FindInFile(readfrom, line2, startinstances)[0] != -1:
+                                
+                                line = line[FindInFile(readfrom, line2, startinstances)[0]:]
+                                readfrom = "" #So that it is no longer used
+                                reading = True #For the lines counter
+                            else: continue #So that the line is ignored if the readfrom hasn't started
+                        except ValueError: continue
+
+                        
+                    
+                    elif totalreadmatch == "word":
+                        
+                        found = False
+                        for index, element in enumerate(line2.split()):
+
+                            if readfrom == element:
+
+                                line = " ".join(x for x in line.split()[index:])
+                                found = True
+                                break
+                        
+                        if found: readfrom = ""; reading=True
+                        if not found: continue
+
+                    elif totalreadmatch == "line":
+                        
+                        if line2 == readfrom:
+                            returnedcontents.append(line)
+                            reading = True
+                            readfrom = ""
+
+                            continue
+
+                    else: raise ValueError("Invalid totalreadmatch specified! ({0}), must be \"none\", \"word\" or \"line\".".format(totalreadmatch))
+
+                if readto != "" and reading:
+                    if not casesensitivestartstop: line2 = line.lower(); readto = readto.lower()
+
+                    if totalreadmatch == "none":
+                        try:
+                            if FindInFile(readto, line2, stopinstances)[0] != -1:
+
+                                line = line[:FindInFile(readto, line2, stopinstances)[0]]
+                                returnedcontents.append(line)
+
+                                break
+                                
+
+                            else: pass
+
+                        except ValueError: pass
+                    elif totalreadmatch == "word":
+                        
+                        found = False
+                        for index, element in enumerate(line2.split()):
+
+                            if readto == element:
+                                
+                                line = " ".join([x for x in line.split()[:index]])
+                                
+                                found = True
+                                break
+                        
+                        if found: returnedcontents.append(line); break
+                        if not found: pass
+
+                    elif totalreadmatch == "line":
+
+                        if line2 == readto:
+                            reading = False
+
+                            break
+                    
+                    else: raise ValueError("Invalid totalreadmatch specified! ({0}), must be \"none\", \"word\" or \"line\".".format(totalreadmatch))
+                            
+
+
+
                 if skipempties == True:
                     while True:
                         try: returnedcontents.remove("")
@@ -391,6 +509,8 @@ def ReadFile(filename, directory = os.getcwd(), actiontriggers = [], actions = [
                 
                 linecontents = ""
                 
+                if not reading and mustbereadingtriggers: #Prevents further reading if no triggers have been detected yet.
+                    continue
 
                 if casesensitivetriggers == False:
                     line = line.lower()
@@ -403,12 +523,12 @@ def ReadFile(filename, directory = os.getcwd(), actiontriggers = [], actions = [
                                 for x in actions[actiontriggers.index(line)]:
                                     if callable(x): x()
                                     elif x == "s" or x == "stop": return line
-                                    elif x == "y" or x == "yield": yield line
+                                   # elif x == "y" or x == "yield": yield line
                             else:
                                 x = actions[actiontriggers.index(line)]
                                 if callable(x): x()
                                 elif x == "s" or x == "stop": return returnedcontents
-                                elif x == "y" or x == "yield": yield returnedcontents
+                                #elif x == "y" or x == "yield": yield returnedcontents
                             #Compatibility with nested lists for multiple function support
 
                         else: returnedcontents.append(line)
@@ -421,12 +541,12 @@ def ReadFile(filename, directory = os.getcwd(), actiontriggers = [], actions = [
                                     for x in actions[actiontriggers.index(word)]:
                                         if callable(x): x()
                                         elif x == "s" or x == "stop": returnedcontents.append(linecontents); return returnedcontents
-                                        elif x == "y" or x == "yield": returnedcontents.append(linecontents); yield returnedcontents
+                                        #elif x == "y" or x == "yield": returnedcontents.append(linecontents); yield returnedcontents
                                 else:
                                     x = actions[actiontriggers.index(word)]
                                     if callable(x): x()
                                     elif x == "s" or x == "stop": returnedcontents.append(linecontents); return returnedcontents
-                                    elif x == "y" or x == "yield": returnedcontents.append(linecontents); yield returnedcontents
+                                    #elif x == "y" or x == "yield": returnedcontents.append(linecontents); yield returnedcontents
                             else: linecontents = linecontents+" "+word+" "
 
                     #For other matching (character based default)
@@ -441,21 +561,26 @@ def ReadFile(filename, directory = os.getcwd(), actiontriggers = [], actions = [
                                             
                                             if callable(x): x()
                                             elif x == "s" or x == "stop": returnedcontents.append(linecontents); return returnedcontents
-                                            elif x == "y" or x == "yield": returnedcontents.append(linecontents); yield returnedcontents
+                                            #elif x == "y" or x == "yield": returnedcontents.append(linecontents); yield returnedcontents
                                      else:
                                          x = actions[index]
                                          if callable(x): x()
                                          elif x == "s" or x == "stop": returnedcontents.append(linecontents); return returnedcontents
-                                         elif x == "y" or x == "yield": returnedcontents.append(linecontents); yield returnedcontents
+                                         #elif x == "y" or x == "yield": returnedcontents.append(linecontents); yield returnedcontents
                                  else: linecontents = linecontents+" "+word+" "
                     returnedcontents.append(linecontents)
                 else: returnedcontents.append(line)
+
+                if readtomet: break
         
         if skipempties == True:
             while True:
                 try: returnedcontents.remove("")
                 except ValueError: break
-                
+
+
+
+
         return returnedcontents
         
     except FileNotFoundError:
@@ -481,6 +606,7 @@ def FindInFile(term, inputstring, instances=0, iterations=1):
 
     if not isinstance(term, str) or term == "":
         raise ValueError("Null string provided!")
+
 
     if len(term) > len(inputstring):
         raise ValueError("The chunk size is smaller than the size of the search term ({0})".format(term))
